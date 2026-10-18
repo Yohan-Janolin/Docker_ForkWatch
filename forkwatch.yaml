@@ -5,8 +5,8 @@ services:
     container_name: ForkWatch
     restart: unless-stopped
     ports:
-      - "9999:8080"          # dashboard: http://NAS-IP:9999
+      - "9999:8080"          # dashboard: http://<YOUR_IP>:9999
     environment:
       TZ: Europe/Paris
     volumes:
-      - /volume1/docker/forkwatch/data:/data      # settings, secrets, repository list, Git mirrors, .bundle archives, log
+      - /<YOUR>/<PATH>/forkwatch/data:/data      # settings, secrets, repository list, Git mirrors, .bundle archives, log
