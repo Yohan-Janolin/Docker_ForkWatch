@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ForkWatch</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='9' cy='7' r='3.5' fill='%2316a34a'/><circle cx='23' cy='7' r='3.5' fill='%2316a34a'/><circle cx='16' cy='25' r='3.5' fill='%2316a34a'/><path d='M9 10.5v3a4 4 0 0 0 4 4h6a4 4 0 0 0 4-4v-3M16 17.5v4' stroke='%2316a34a' stroke-width='2.5' fill='none'/></svg>">
+<script>
+  // Apply the saved theme before first paint
+  try { const t = localStorage.getItem("fw-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f1f3f6; --border: #e3e6eb; --border-strong: #cfd4dc;
+    --text: #1b1f24; --muted: #667080;
+    --ok: #16a34a; --ok-bg: #e9f7ee; --warn: #b4650a; --warn-bg: #fdf3e4;
+    --bad: #d92d20; --bad-bg: #fdecea; --idle: #6b7280; --idle-bg: #eef0f3;
+    --accent: #2f6fde; --accent-bg: #e8effc; --accent-text: #ffffff;
+    --shadow: 0 10px 30px rgba(15, 23, 42, .12), 0 2px 6px rgba(15, 23, 42, .06);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f1216; --surface: #171b21; --surface-2: #1d222a; --border: #262c35; --border-strong: #353d49;
+      --text: #e6e9ee; --muted: #8b95a5;
+      --ok: #3fbf6f; --ok-bg: #12261a; --warn: #e3a03a; --warn-bg: #2a2010;
+      --bad: #f2665b; --bad-bg: #2c1513; --idle: #9aa3b1; --idle-bg: #1f242c;
+      --accent: #6ea1ff; --accent-bg: #18243a; --accent-text: #0b1220;
+      --shadow: 0 10px 30px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0f1216; --surface: #171b21; --surface-2: #1d222a; --border: #262c35; --border-strong: #353d49;
+    --text: #e6e9ee; --muted: #8b95a5;
+    --ok: #3fbf6f; --ok-bg: #12261a; --warn: #e3a03a; --warn-bg: #2a2010;
+    --bad: #f2665b; --bad-bg: #2c1513; --idle: #9aa3b1; --idle-bg: #1f242c;
+    --accent: #6ea1ff; --accent-bg: #18243a; --accent-text: #0b1220;
+    --shadow: 0 10px 30px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: inherit; }
+  .wrap { margin: 0 auto; padding: 28px clamp(16px, 2.5vw, 40px) 48px; }
+  svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Header */
+  header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+  h1 { margin: 0; font-size: 24px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
+  h1 svg { width: 26px; height: 26px; }
+  .run { color: var(--muted); font-size: 13.5px; margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .run.bad { color: var(--bad); }
+  .run code { font-size: 12.5px; }
+  .head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* Buttons */
+  .btn {
+    font: inherit; font-size: 13.5px; font-weight: 550; display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); cursor: pointer; text-decoration: none; white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-2); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .btn.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+  .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .btn.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(1.08); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 6px 8px; }
+  .btn.ghost:hover:not(:disabled) { color: var(--text); background: var(--surface-2); border-color: transparent; }
+  .btn.icon { padding: 7px; }
+  .btn.sm { font-size: 12.5px; padding: 5px 9px; gap: 6px; }
+  .btn.sm.icon { padding: 5px; }
+  .btn.alert { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--border)); background: var(--bad-bg); }
+  .btn.alert:hover:not(:disabled) { background: var(--bad-bg); filter: brightness(.97); border-color: var(--bad); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.9s linear infinite; }
+
+  /* Toolbar */
+  .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    display: inline-flex; gap: 6px; align-items: center;
+  }
+  .chip b { font-variant-numeric: tabular-nums; }
+  .chip[aria-pressed=true] { border-color: var(--text); }
+  input[type=search], input[type=text], input[type=number], select {
+    font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); max-width: 100%;
+  }
+  input[type=search] { width: 230px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+
+  /* Cards */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  }
+  .card.blocked, .card.error { border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); }
+  .card.missing { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+  .card.paused { opacity: .78; }
+  .top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+  .name { font-weight: 650; font-size: 16px; word-break: break-word; }
+  .links { font-size: 13px; color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; margin-top: 3px; }
+  .links span:nth-child(odd) { color: var(--muted); }
+  .links a, .links .v { color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+  .links a:hover { color: var(--accent); text-decoration: underline; }
+  .links .na { color: var(--muted); }
+  .badge {
+    flex: none; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .badge svg.i { width: 12px; height: 12px; }
+  .s-ok { color: var(--ok); background: var(--ok-bg); }
+  .s-blocked, .s-error { color: var(--bad); background: var(--bad-bg); }
+  .s-missing { color: var(--warn); background: var(--warn-bg); }
+  .s-pending, .s-paused, .s-queued { color: var(--idle); background: var(--idle-bg); }
+  .s-checking { color: var(--accent); background: var(--accent-bg); }
+  .msg { font-size: 13px; border-radius: 8px; padding: 9px 11px; margin: 0; background: var(--idle-bg); }
+  .msg ul { margin: 4px 0 0; padding-left: 18px; }
+  .card.blocked .msg, .card.error .msg { background: var(--bad-bg); }
+  .card.missing .msg { background: var(--warn-bg); }
+  .commit { font-size: 13.5px; display: flex; gap: 8px; min-width: 0; }
+  .sha { font-family: var(--mono); font-size: 12.5px; color: var(--muted); flex: none; }
+  .subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 13px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+  dd a { color: var(--accent); text-decoration: none; }
+  dd a:hover { text-decoration: underline; }
+  code { font-family: var(--mono); font-size: 12.5px; }
+  .actions { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 2px; }
+  .actions .grow { flex: 1; }
+  .menu-wrap { position: relative; }
+  .menu {
+    position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 20; min-width: 200px; white-space: nowrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 5px;
+  }
+  .menu button {
+    width: 100%; font: inherit; font-size: 13.5px; display: flex; align-items: center; gap: 9px; text-align: left;
+    padding: 8px 10px; border: 0; background: transparent; color: var(--text); border-radius: 7px; cursor: pointer;
+  }
+  .menu button:hover { background: var(--surface-2); }
+  .menu button.danger { color: var(--bad); }
+  .history { font-size: 12.5px; border-top: 1px dashed var(--border); padding-top: 10px; display: grid; gap: 7px; max-height: 260px; overflow: auto; }
+  .h-item { display: grid; grid-template-columns: 8px auto 1fr; gap: 8px; align-items: baseline; }
+  .h-item .dot { width: 7px; height: 7px; transform: translateY(-1px); }
+  .h-time { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .lv-ok { background: var(--ok); } .lv-info { background: var(--accent); } .lv-warn { background: var(--warn); } .lv-alert { background: var(--bad); }
+  .empty { text-align: center; color: var(--muted); padding: 48px 20px; border: 1px dashed var(--border); border-radius: 12px; }
+  footer { margin-top: 26px; color: var(--muted); font-size: 12.5px; text-align: center; }
+
+  /* Dialogs */
+  dialog {
+    border: 1px solid var(--border); border-radius: 14px; padding: 0; width: min(520px, calc(100vw - 32px));
+    background: var(--surface); color: var(--text); box-shadow: var(--shadow);
+  }
+  dialog::backdrop { background: rgba(10, 14, 20, .45); }
+  .dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 0; }
+  .dlg-head h2 { margin: 0; font-size: 17px; }
+  .dlg-body { padding: 14px 20px 4px; display: grid; gap: 14px; }
+  .dlg-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px 18px; flex-wrap: wrap; }
+  .field { display: grid; gap: 5px; }
+  .field label, .field .lbl { font-size: 13px; font-weight: 600; }
+  .field input, .field select { width: 100%; }
+  .field small { color: var(--muted); font-size: 12px; }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; min-width: 0; }
+  .hint { font-size: 13px; color: var(--muted); margin: 0; }
+  .note { font-size: 13px; border-radius: 8px; padding: 9px 11px; background: var(--surface-2); margin: 0; }
+  .note.ok { background: var(--ok-bg); } .note.bad { background: var(--bad-bg); color: var(--bad); }
+  .check { display: flex; gap: 9px; align-items: flex-start; font-size: 13.5px; cursor: pointer; }
+  .check input { margin-top: 3px; }
+  .section-title { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-top: 1px solid var(--border); padding-top: 14px; }
+  .lbl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .lbl-row label { font-size: 13px; font-weight: 600; }
+  .sec-state { font-size: 12px; font-weight: 600; margin-left: auto; }
+  .sec-state.yes { color: var(--ok); } .sec-state.no { color: var(--muted); }
+  .sec-state code { font-weight: 400; color: var(--muted); }
+  .lbl-row .btn.sm { padding: 2px 6px; font-size: 12px; }
+  input[type=password] { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 100%; }
+  dialog { max-height: calc(100vh - 32px); overflow: auto; }
+  .secrets { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+  .secrets .yes { color: var(--ok); font-weight: 600; } .secrets .no { color: var(--muted); }
+  .reasons { margin: 0; padding-left: 18px; font-size: 13.5px; display: grid; gap: 8px; }
+  .reasons a { color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .field { align-content: start; }
+
+  /* Toasts */
+  #toasts { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 50; max-width: calc(100vw - 32px); }
+  .toast {
+    background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: 13.5px;
+    box-shadow: var(--shadow); max-width: 380px;
+  }
+  .toast.bad { background: var(--bad); color: #fff; }
+
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    input[type=search] { width: 100%; }
+    .toolbar > * { width: 100%; }
+    .head-actions .lbl-txt { display: none; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>
+        <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><circle cx="23" cy="7" r="3.5" fill="currentColor"/><circle cx="16" cy="25" r="3.5" fill="currentColor"/><path d="M9 10.5v3a4 4 0 0 0 4 4h6a4 4 0 0 0 4-4v-3M16 17.5v4" stroke="currentColor" stroke-width="2.5" fill="none"/></svg>
+        ForkWatch
+      </h1>
+      <div class="run" id="run">…</div>
+    </div>
+    <div class="head-actions">
+      <button class="btn" id="btn-run"></button>
+      <button class="btn primary" id="btn-add"></button>
+      <button class="btn icon" id="btn-settings"></button>
+      <button class="btn icon" id="btn-theme"></button>
+    </div>
+  </header>
+  <div class="toolbar">
+    <div class="chips" id="chips"></div>
+    <input type="search" id="q">
+  </div>
+  <main id="list"></main>
+  <footer id="foot"></footer>
+</div>
+
+<dialog id="dlg-add"></dialog>
+<dialog id="dlg-settings"></dialog>
+<dialog id="dlg-accept"></dialog>
+<dialog id="dlg-remove"></dialog>
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+/* ------------------------------------------------------------------ icons */
+const ICONS = {
+  refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  settings: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  auto: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  dots: '<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>',
+  pause: '<path d="M9 5v14M15 5v14"/>',
+  play: '<path d="M7 4l13 8-13 8z"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  check: '<path d="M5 12l5 5L20 7"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  send: '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>',
+  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  loader: '<path d="M21 12a9 9 0 1 1-6.2-8.56"/>',
+};
+const icon = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
+
+/* ------------------------------------------------------------------ i18n */
+const I18N = {
+  fr: {
+    never_run: "Aucun passage pour l'instant", last_run: "Dernier passage {t}", run_ok: "sans erreur", run_errors: ["{n} erreur", "{n} erreurs"],
+    next_run: "prochain {t}", next_soon: "prochain passage imminent", running: "Vérification : {name}", running_all: "Vérification de tous les dépôts…",
+    queued_n: "{n} en attente", sync_all: "Tout vérifier", syncing: "En cours…", add: "Ajouter", settings: "Paramètres",
+    theme_auto: "Thème : automatique (clic pour clair)", theme_light: "Thème : clair (clic pour sombre)", theme_dark: "Thème : sombre (clic pour automatique)",
+    filter: "Filtrer les dépôts…", all: "Tous",
+    st_ok: "À jour", st_blocked: "Bloqué", st_error: "Erreur", st_missing: "Injoignable", st_pending: "En attente",
+    st_paused: "En pause", st_checking: "Vérification…", st_queued: "En file",
+    source: "Source", fork: "Fork", na: "N/A",
+    f_branch: "Branche", f_last_commit: "Dernier commit", f_last_change: "Dernier changement", f_checked: "Vérifié",
+    f_tags: "Tags", f_archives: "Archives", others: ["+ {n} autre", "+ {n} autres"], none_m: "aucun", none_f: "aucune",
+    latest_tag: "dernier", archives_val: "{n} · dernière {t}",
+    check_now: "Vérifier", accept: "Accepter…", history: "Historique", download: "Télécharger la dernière archive ({s})",
+    more: "Plus d'actions", pause: "Mettre en pause", resume: "Reprendre la surveillance", remove: "Retirer…",
+    empty: "Aucun dépôt surveillé. Ajoute ton premier fork avec le bouton « Ajouter ».", no_match: "Aucun dépôt ne correspond.",
+    footer: ["{n} dépôt surveillé · {k} archives conservées par dépôt · ForkWatch {v}", "{n} dépôts surveillés · {k} archives conservées par dépôt · ForkWatch {v}"],
+    offline: "Serveur ForkWatch injoignable. Nouvelle tentative…",
+    add_title: "Ajouter un dépôt", add_hint: "Colle l'URL de ton fork GitHub : le dépôt d'origine est détecté automatiquement. Tu peux aussi coller l'URL d'un simple dépôt (GitHub ou autre).",
+    add_url: "URL du fork ou du dépôt", detect: "Analyser", add_name: "Nom", add_name_hint: "Lettres, chiffres, . _ - (sert aussi de nom aux archives)",
+    add_source: "Source (dépôt surveillé)", add_fork: "Fork GitHub (optionnel)", add_fork_hint: "owner/repo — synchronisé après chaque mise à jour saine si un token GitHub est configuré",
+    detected_fork: "Fork de {up} détecté : la source surveillée est le dépôt d'origine.", detected_repo: "Dépôt GitHub (pas un fork).",
+    detected_other: "Dépôt hors GitHub : pas de détection automatique.", cancel: "Annuler", close: "Fermer", add_confirm: "Ajouter et vérifier",
+    set_title: "Paramètres", set_lang: "Langue de l'interface et des notifications", set_interval: "Fréquence des vérifications",
+    every_h: "Toutes les {n} heures", every_1h: "Toutes les heures", every_24h: "Une fois par jour",
+    set_keep: "Archives conservées par dépôt", set_shrink: "Bloquer si une branche perd plus de (%)", set_shrink_hint: "pourcentage de fichiers perdus d'un coup",
+    set_nochange: "Notifier aussi quand rien n'a changé", set_secrets: "Notifications et GitHub",
+    sec_discord_hint: "Paramètres du salon Discord → Intégrations → Webhooks. Champ vide = inchangé.",
+    sec_github_hint: "Facultatif : synchronise tes forks et détecte l'origine à l'ajout. Champ vide = inchangé.",
+    sec_url: "Adresse du tableau de bord", sec_url_hint: "Ajoutée en lien dans les notifications Discord. Vide = pas de lien.",
+    set_env: "Configuré (fichier env)", clear: "Effacer", will_clear: "Sera effacé", keep_value: "•••••• (laisser vide pour garder)",
+    e_invalid_webhook: "URL de webhook Discord invalide.", e_invalid_token: "Token GitHub invalide.",
+    sec_discord: "Webhook Discord", sec_github: "Token GitHub", configured: "Configuré", not_configured: "Non configuré",
+    test_discord: "Tester Discord", save: "Enregistrer",
+    acc_title: "Accepter la mise à jour de {name} ?", acc_intro: "ForkWatch a bloqué cette mise à jour :",
+    acc_after: "Si tu acceptes, l'état actuel est archivé et conservé dans le dépôt, puis la version upstream est appliquée. Le fork GitHub est ensuite synchronisé si possible.",
+    acc_legacy: "Blocage hérité de la version 1, détail non disponible :", acc_confirm: "Accepter quand même", compare: "voir la comparaison",
+    rm_title: "Retirer {name} ?", rm_text: "Le dépôt ne sera plus surveillé.", rm_purge: "Supprimer aussi la copie locale (les archives .bundle sont conservées)", rm_confirm: "Retirer",
+    t_saved: "Paramètres enregistrés", t_added: "{name} ajouté, première vérification lancée", t_queued: "Vérification de {name} lancée",
+    t_run: "Vérification de tous les dépôts lancée", t_accept: "Application de la mise à jour de {name}…", t_removed: "{name} retiré",
+    t_paused: "{name} mis en pause", t_resumed: "{name} réactivé", t_test_ok: "Notification de test envoyée", t_error: "Erreur : {e}",
+    e_not_found: "Dépôt introuvable sur GitHub (ou privé).", e_invalid_name: "Nom invalide (lettres, chiffres, . _ -).", e_name_taken: "Ce nom est déjà utilisé.",
+    e_already_watched: "Ce dépôt est déjà surveillé (sous le nom « {d} »).", e_invalid_url: "URL invalide.", e_invalid_fork: "Fork invalide (format owner/repo).",
+    e_network: "Impossible de joindre GitHub ({d}).", e_not_configured: "Webhook Discord non configuré.", e_notify_failed: "Envoi Discord échoué ({d}).",
+    e_nothing_pending: "Aucune mise à jour en attente.", e_unknown_repo: "Dépôt inconnu.", e_busy: "Dépôt en cours de vérification, réessaie dans un instant.",
+    e_invalid_setting: "Valeur invalide ({d}).", e_internal: "Erreur interne (voir les logs du container).",
+    ev_added: "Ajouté à la surveillance ({refs} branches et tags).", ev_updated: ["Mis à jour : {n} nouveau commit.", "Mis à jour : {n} nouveaux commits."],
+    ev_minor: "Changements mineurs.", ev_blocked: "Mise à jour bloquée : changement suspect détecté upstream. Rien n'a été appliqué.",
+    ev_missing: "Le dépôt upstream ne répond plus (supprimé, passé en privé ou renommé ?). La copie locale est intacte.",
+    ev_back: "Upstream de nouveau joignable.", ev_accepted: "Mise à jour acceptée manuellement. Ancien état conservé dans {backup}.",
+    ev_error: "{stage} : {detail}", ev_unchanged: "Aucun changement.",
+    stage_clone: "Échec du clonage", stage_fetch: "Échec de la récupération", stage_apply: "Échec de l'application", stage_internal: "Erreur interne",
+    r_force: "{branch} : historique réécrit (force-push), l'ancien commit {old} n'est plus dans la nouvelle version",
+    r_shrink: "{branch} : {before} → {after} fichiers (−{pct} %)",
+    i_new_branch: "nouvelle branche {ref}", i_deleted_branch: "branche {ref} supprimée upstream (conservée ici)", i_new_tag: "nouveau tag {ref}",
+    i_moved_tag: "tag {ref} déplacé upstream (ancienne version conservée ici)", i_deleted_tag: "tag {ref} supprimé upstream (conservé ici)",
+    b_commits: ["{branch} : {n} commit", "{branch} : {n} commits"], fork_ok: "Fork {repo} synchronisé.", fork_diverged: "Fork {repo} non synchronisé (historique divergent, à faire à la main).",
+    fork_error: "Fork {repo} : erreur HTTP {code}.", h_empty: "Aucun événement.",
+  },
+  en: {
+    never_run: "No run yet", last_run: "Last run {t}", run_ok: "no errors", run_errors: ["{n} error", "{n} errors"],
+    next_run: "next {t}", next_soon: "next run imminent", running: "Checking: {name}", running_all: "Checking all repositories…",
+    queued_n: "{n} queued", sync_all: "Check all", syncing: "Running…", add: "Add", settings: "Settings",
+    theme_auto: "Theme: automatic (click for light)", theme_light: "Theme: light (click for dark)", theme_dark: "Theme: dark (click for automatic)",
+    filter: "Filter repositories…", all: "All",
+    st_ok: "Up to date", st_blocked: "Blocked", st_error: "Error", st_missing: "Unreachable", st_pending: "Pending",
+    st_paused: "Paused", st_checking: "Checking…", st_queued: "Queued",
+    source: "Source", fork: "Fork", na: "N/A",
+    f_branch: "Branch", f_last_commit: "Last commit", f_last_change: "Last change", f_checked: "Checked",
+    f_tags: "Tags", f_archives: "Archives", others: "+ {n} more", none_m: "none", none_f: "none",
+    latest_tag: "latest", archives_val: "{n} · latest {t}",
+    check_now: "Check", accept: "Accept…", history: "History", download: "Download the latest archive ({s})",
+    more: "More actions", pause: "Pause", resume: "Resume watching", remove: "Remove…",
+    empty: "No repository watched yet. Add your first fork with the “Add” button.", no_match: "No repository matches.",
+    footer: ["{n} repository watched · {k} archives kept per repository · ForkWatch {v}", "{n} repositories watched · {k} archives kept per repository · ForkWatch {v}"],
+    offline: "ForkWatch server unreachable. Retrying…",
+    add_title: "Add a repository", add_hint: "Paste the URL of your GitHub fork: the original repository is detected automatically. You can also paste the URL of a plain repository (GitHub or other).",
+    add_url: "Fork or repository URL", detect: "Analyse", add_name: "Name", add_name_hint: "Letters, digits, . _ - (also used to name the archives)",
+    add_source: "Source (watched repository)", add_fork: "GitHub fork (optional)", add_fork_hint: "owner/repo — synced after each healthy update when a GitHub token is set",
+    detected_fork: "Fork of {up} detected: the watched source is the original repository.", detected_repo: "GitHub repository (not a fork).",
+    detected_other: "Non-GitHub repository: no automatic detection.", cancel: "Cancel", close: "Close", add_confirm: "Add and check",
+    set_title: "Settings", set_lang: "Language of the interface and notifications", set_interval: "Check frequency",
+    every_h: "Every {n} hours", every_1h: "Every hour", every_24h: "Once a day",
+    set_keep: "Archives kept per repository", set_shrink: "Block when a branch loses more than (%)", set_shrink_hint: "percentage of files lost at once",
+    set_nochange: "Also notify when nothing changed", set_secrets: "Notifications and GitHub",
+    sec_discord_hint: "Discord channel settings → Integrations → Webhooks. Empty field = unchanged.",
+    sec_github_hint: "Optional: syncs your forks and detects the origin when adding. Empty field = unchanged.",
+    sec_url: "Dashboard address", sec_url_hint: "Added as a link to Discord notifications. Empty = no link.",
+    set_env: "Configured (env file)", clear: "Clear", will_clear: "Will be cleared", keep_value: "•••••• (leave empty to keep)",
+    e_invalid_webhook: "Invalid Discord webhook URL.", e_invalid_token: "Invalid GitHub token.",
+    sec_discord: "Discord webhook", sec_github: "GitHub token", configured: "Configured", not_configured: "Not configured",
+    test_discord: "Test Discord", save: "Save",
+    acc_title: "Accept the update of {name}?", acc_intro: "ForkWatch blocked this update:",
+    acc_after: "If you accept, the current state is archived and kept in the repository, then the upstream version is applied. The GitHub fork is then synced when possible.",
+    acc_legacy: "Block inherited from version 1, details unavailable:", acc_confirm: "Accept anyway", compare: "view the comparison",
+    rm_title: "Remove {name}?", rm_text: "The repository will no longer be watched.", rm_purge: "Also delete the local copy (.bundle archives are kept)", rm_confirm: "Remove",
+    t_saved: "Settings saved", t_added: "{name} added, first check started", t_queued: "Check of {name} started",
+    t_run: "Check of all repositories started", t_accept: "Applying the update of {name}…", t_removed: "{name} removed",
+    t_paused: "{name} paused", t_resumed: "{name} resumed", t_test_ok: "Test notification sent", t_error: "Error: {e}",
+    e_not_found: "Repository not found on GitHub (or private).", e_invalid_name: "Invalid name (letters, digits, . _ -).", e_name_taken: "This name is already used.",
+    e_already_watched: "This repository is already watched (as “{d}”).", e_invalid_url: "Invalid URL.", e_invalid_fork: "Invalid fork (owner/repo format).",
+    e_network: "Cannot reach GitHub ({d}).", e_not_configured: "Discord webhook not configured.", e_notify_failed: "Discord delivery failed ({d}).",
+    e_nothing_pending: "No pending update.", e_unknown_repo: "Unknown repository.", e_busy: "Repository being checked, try again in a moment.",
+    e_invalid_setting: "Invalid value ({d}).", e_internal: "Internal error (see the container logs).",
+    ev_added: "Added to watch list ({refs} branches and tags).", ev_updated: ["Updated: {n} new commit.", "Updated: {n} new commits."],
+    ev_minor: "Minor changes.", ev_blocked: "Update blocked: suspicious upstream change detected. Nothing was applied.",
+    ev_missing: "The upstream repository no longer answers (deleted, made private or renamed?). The local copy is intact.",
+    ev_back: "Upstream reachable again.", ev_accepted: "Update accepted manually. Previous state kept in {backup}.",
+    ev_error: "{stage}: {detail}", ev_unchanged: "No change.",
+    stage_clone: "Clone failed", stage_fetch: "Fetch failed", stage_apply: "Update failed", stage_internal: "Internal error",
+    r_force: "{branch}: history rewritten (force-push), old commit {old} is no longer in the new version",
+    r_shrink: "{branch}: {before} → {after} files (−{pct}%)",
+    i_new_branch: "new branch {ref}", i_deleted_branch: "branch {ref} deleted upstream (kept here)", i_new_tag: "new tag {ref}",
+    i_moved_tag: "tag {ref} moved upstream (old version kept here)", i_deleted_tag: "tag {ref} deleted upstream (kept here)",
+    b_commits: ["{branch}: {n} commit", "{branch}: {n} commits"], fork_ok: "Fork {repo} synced.", fork_diverged: "Fork {repo} not synced (diverged history, sync it manually).",
+    fork_error: "Fork {repo}: HTTP error {code}.", h_empty: "No events.",
+  },
+};
+
+/* ------------------------------------------------------------------ state */
+const STATES = {
+  checking: { cls: "s-checking", color: "var(--accent)", rank: -1 },
+  blocked:  { cls: "s-blocked",  color: "var(--bad)",    rank: 0 },
+  error:    { cls: "s-error",    color: "var(--bad)",    rank: 0 },
+  missing:  { cls: "s-missing",  color: "var(--warn)",   rank: 1 },
+  queued:   { cls: "s-queued",   color: "var(--idle)",   rank: 2 },
+  pending:  { cls: "s-pending",  color: "var(--idle)",   rank: 2 },
+  ok:       { cls: "s-ok",       color: "var(--ok)",     rank: 3 },
+  paused:   { cls: "s-paused",   color: "var(--idle)",   rank: 4 },
+};
+let data = null, lastJson = "", filter = "all", openHistory = new Set(), openMenu = null, offline = false;
+let lang = "fr";
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function t(key, params = {}, raw = false) {
+  let s = (I18N[lang] && I18N[lang][key]) ?? I18N.fr[key] ?? key;
+  if (Array.isArray(s)) s = Number(params.n) === 1 ? s[0] : s[1];
+  return s.replace(/\{(\w+)\}/g, (_, k) => raw ? (params[k] ?? "") : esc(params[k] ?? ""));
+}
+const tr = (key, params = {}) => t(key, params, true); // unescaped, for textContent / title
+
+function ago(ts) {
+  if (!ts) return "—";
+  const diff = ts - Date.now() / 1000, a = Math.abs(diff);
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
+  if (a < 45) return rtf.format(0, "second");
+  const units = [["minute", 60], ["hour", 3600], ["day", 86400], ["month", 2629800], ["year", 31557600]];
+  let unit = "minute", size = 60;
+  for (const [u, s] of units) if (a >= s) { unit = u; size = s; }
+  return rtf.format(Math.round(diff / size), unit);
+}
+const full = ts => ts ? new Date(ts * 1000).toLocaleString(lang === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "";
+const short = ts => ts ? new Date(ts * 1000).toLocaleString(lang === "fr" ? "fr-FR" : "en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+function size(b) {
+  if (b == null) return "";
+  const u = lang === "fr" ? ["o", "Ko", "Mo", "Go"] : ["B", "KB", "MB", "GB"]; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b.toFixed(i ? 1 : 0).replace(".", lang === "fr" ? "," : ".")} ${u[i]}`;
+}
+function ghParse(url) {
+  if (!url) return null;
+  const m = String(url).match(/^(?:https?:\/\/(?:www\.)?github\.com\/|git@github\.com:)([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+function sourceLink(url) {
+  const gh = ghParse(url);
+  if (gh) return `<a href="https://github.com/${esc(gh)}" target="_blank" rel="noopener">${esc(gh)}</a>`;
+  if (/^https?:\/\//.test(url || "")) return `<a href="${esc(url.replace(/\.git$/, ""))}" target="_blank" rel="noopener">${esc(url.replace(/^https?:\/\//, "").replace(/\.git$/, ""))}</a>`;
+  return `<span class="v">${esc(url)}</span>`;
+}
+
+/* ------------------------------------------------------------------ API */
+async function api(method, path, body) {
+  const res = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  let payload = null;
+  try { payload = await res.json(); } catch (e) {}
+  if (!res.ok) { const err = new Error(payload?.error || `HTTP ${res.status}`); err.code = payload?.error; err.detail = payload?.detail; throw err; }
+  return payload;
+}
+function errText(e) {
+  const key = "e_" + (e.code || "");
+  return I18N.fr[key] ? tr(key, { d: e.detail ?? "" }) : (e.message || String(e));
+}
+function toast(msg, bad = false) {
+  const el = document.createElement("div");
+  el.className = "toast" + (bad ? " bad" : "");
+  el.textContent = msg;
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.remove(), bad ? 6000 : 3500);
+}
+
+let pollTimer = null;
+async function load(force = false) {
+  clearTimeout(pollTimer);
+  try {
+    const res = await fetch("api/status", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const wasOffline = offline; offline = false;
+    if (force || wasOffline || text !== lastJson) {
+      lastJson = text;
+      data = JSON.parse(text);
+      if (data.settings.language !== lang) { lang = data.settings.language; applyLang(); }
+      render();
+    }
+  } catch (e) {
+    if (!offline) { offline = true; $("#run").className = "run bad"; $("#run").textContent = tr("offline"); }
+  }
+  const busy = data && (data.run.busy || data.repos.some(r => r.state === "pending"));
+  pollTimer = setTimeout(load, offline ? 5000 : busy ? 2000 : 20000);
+}
+setInterval(() => { if (data && !offline) render(); }, 60000); // keep relative times fresh
+
+/* ------------------------------------------------------------------ theme */
+function applyTheme() {
+  const mode = store.get("fw-theme") || "auto";
+  if (mode === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = mode;
+  const b = $("#btn-theme");
+  b.innerHTML = icon(mode === "light" ? "sun" : mode === "dark" ? "moon" : "auto");
+  b.title = tr("theme_" + mode); b.setAttribute("aria-label", b.title);
+}
+$("#btn-theme").addEventListener("click", () => {
+  const order = ["auto", "light", "dark"], cur = store.get("fw-theme") || "auto";
+  const next = order[(order.indexOf(cur) + 1) % order.length];
+  store.set("fw-theme", next === "auto" ? null : next);
+  applyTheme();
+});
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  $("#btn-add").innerHTML = `${icon("plus")}<span class="lbl-txt">${t("add")}</span>`;
+  $("#btn-settings").innerHTML = icon("settings");
+  $("#btn-settings").title = tr("settings"); $("#btn-settings").setAttribute("aria-label", tr("settings"));
+  $("#q").placeholder = tr("filter"); $("#q").setAttribute("aria-label", tr("filter"));
+  applyTheme();
+}
+
+/* ------------------------------------------------------------------ rendering */
+function displayState(r) {
+  if (data.run.current === r.name) return "checking";
+  if (data.run.queued.includes(r.name)) return "queued";
+  if (r.paused) return "paused";
+  return STATES[r.state] ? r.state : "pending";
+}
+
+function eventMain(ev) {
+  if (!ev) return "";
+  const p = ev.params || {};
+  switch (ev.code) {
+    case "added": return t("ev_added", { refs: p.refs ?? "?" });
+    case "updated": return t("ev_updated", { n: p.total ?? "?" });
+    case "minor": return t("ev_minor");
+    case "blocked": return t("ev_blocked");
+    case "missing": return t("ev_missing");
+    case "back": return t("ev_back");
+    case "accepted": return t("ev_accepted", { backup: p.backup || "" });
+    case "error": return t("ev_error", { stage: tr("stage_" + (p.stage || "internal")), detail: (p.detail || "").split("\n")[0].slice(0, 200) });
+    case "unchanged": return t("ev_unchanged");
+    case "legacy": return esc(p.text || "").replace(/\n/g, "<br>");
+    default: return esc(ev.code);
+  }
+}
+function reasonText(r) {
+  return r.type === "force"
+    ? t("r_force", { branch: r.branch, old: (r.old || "").slice(0, 7) })
+    : t("r_shrink", r);
+}
+function eventDetails(ev) {
+  if (!ev) return [];
+  const p = ev.params || {}, out = [];
+  if (ev.code === "blocked") (p.reasons || []).forEach(r => out.push(reasonText(r)));
+  if (ev.code === "updated") (p.branches || []).forEach(b => out.push(t("b_commits", b)));
+  if (ev.code === "updated" || ev.code === "minor") (p.infos || []).forEach(i => out.push(t("i_" + i.kind, { ref: i.ref })));
+  if (p.fork) out.push(t("fork_" + p.fork.result, { repo: p.fork.repo, code: p.fork.code }));
+  return out;
+}
+
+function render() {
+  if (!data) return;
+  const run = data.run, last = run.last;
+  const runEl = $("#run");
+  let html;
+  if (run.busy && (run.current || run.run_all)) {
+    html = `${icon("loader", "spin")}<span>${run.current ? t("running", { name: run.current }) : t("running_all")}</span>`;
+    if (run.queued.length) html += `<span>· ${t("queued_n", { n: run.queued.length })}</span>`;
+    runEl.className = "run";
+  } else {
+    const parts = [];
+    if (last) {
+      parts.push(`<span title="${esc(full(last.started))}">${t("last_run", { t: ago(last.finished || last.started) })}</span>`);
+      parts.push(`<span>· ${last.ok ? t("run_ok") : t("run_errors", { n: last.errors })}</span>`);
+    } else parts.push(`<span>${t("never_run")}</span>`);
+    if (run.next_due) parts.push(`<span title="${esc(full(run.next_due))}">· ${run.next_due <= Date.now() / 1000 ? t("next_soon") : t("next_run", { t: ago(run.next_due) })}</span>`);
+    html = parts.join("");
+    runEl.className = "run" + (last && !last.ok ? " bad" : "");
+  }
+  runEl.innerHTML = html;
+
+  const runBtn = $("#btn-run");
+  runBtn.disabled = !!run.run_all;
+  runBtn.innerHTML = run.run_all ? `${icon("loader", "spin")}<span class="lbl-txt">${t("syncing")}</span>` : `${icon("refresh")}<span class="lbl-txt">${t("sync_all")}</span>`;
+  runBtn.title = tr("sync_all");
+
+  const repos = data.repos;
+  const counts = { all: repos.length };
+  repos.forEach(r => { const s = displayState(r); counts[s] = (counts[s] || 0) + 1; });
+  const chipKeys = ["all", "blocked", "error", "missing", "checking", "queued", "pending", "ok", "paused"].filter(k => k === "all" || counts[k]);
+  if (!chipKeys.includes(filter)) filter = "all";
+  $("#chips").innerHTML = chipKeys.map(k =>
+    `<button class="chip" data-f="${k}" aria-pressed="${filter === k}">${k === "all" ? "" : `<span class="dot" style="background:${STATES[k].color}"></span>`}${k === "all" ? t("all") : t("st_" + k)} <b>${counts[k]}</b></button>`
+  ).join("");
+
+  const q = $("#q").value.trim().toLowerCase();
+  const shown = repos
+    .filter(r => filter === "all" || displayState(r) === filter)
+    .filter(r => !q || `${r.name} ${r.url} ${r.fork || ""}`.toLowerCase().includes(q))
+    .sort((a, b) => (STATES[displayState(a)].rank - STATES[displayState(b)].rank) || a.name.localeCompare(b.name));
+
+  const list = $("#list");
+  if (!repos.length) list.innerHTML = `<div class="empty">${t("empty")}</div>`;
+  else if (!shown.length) list.innerHTML = `<div class="empty">${t("no_match")}</div>`;
+  else list.innerHTML = `<div class="grid">${shown.map(card).join("")}</div>`;
+
+  $("#foot").textContent = tr("footer", { n: repos.length, k: data.settings.keep_archives, v: data.version });
+}
+
+function card(r) {
+  const ds = displayState(r), st = STATES[ds];
+  const info = r.info || {}, h = info.head || {}, archives = r.archives || [], latest = archives[0];
+  const busy = ds === "checking" || ds === "queued";
+  const ev = r.event;
+  const details = eventDetails(ev);
+  const showMsg = ev && (ev.code !== "added" || r.state !== "ok" || details.length);
+  const badgeIcon = ds === "checking" ? icon("loader", "spin") : `<span class="dot" style="background:currentColor"></span>`;
+  const forkHtml = r.fork
+    ? `<a href="https://github.com/${esc(r.fork)}" target="_blank" rel="noopener">${esc(r.fork)}</a>`
+    : `<span class="na">${t("na")}</span>`;
+  const archivesHtml = latest
+    ? `${t("archives_val", { n: archives.length, t: ago(latest.date) })} · <a href="api/repos/${encodeURIComponent(r.name)}/archives/${encodeURIComponent(latest.file)}" download title="${esc(tr("download", { s: size(latest.size) }))}">${esc(size(latest.size))}</a>`
+    : t("none_f");
+  const hist = openHistory.has(r.name)
+    ? `<div class="history">${(r.history || []).length ? r.history.map(e =>
+        `<div class="h-item"><span class="dot lv-${esc(e.level)}"></span><span class="h-time" title="${esc(full(e.ts))}">${esc(short(e.ts))}</span><span>${eventMain(e)}</span></div>`).join("")
+        : `<div class="h-time">${t("h_empty")}</div>`}</div>`
+    : "";
+  const n = esc(r.name);
+  return `<article class="card ${esc(r.paused ? "paused " + r.state : r.state)}" data-name="${n}">
+    <div class="top">
+      <div style="min-width:0">
+        <div class="name">${n}</div>
+        <div class="links"><span>${t("source")}${lang === "fr" ? "&nbsp;:" : ":"}</span>${sourceLink(r.url)}<span>${t("fork")}${lang === "fr" ? "&nbsp;:" : ":"}</span>${forkHtml}</div>
+      </div>
+      <span class="badge ${st.cls}" title="${esc(r.since ? full(r.since) : "")}">${badgeIcon}${t("st_" + ds)}</span>
+    </div>
+    ${h.sha ? `<div class="commit"><span class="sha">${esc(h.sha)}</span><span class="subject" title="${esc(h.subject)}">${esc(h.subject)}</span></div>` : ""}
+    ${showMsg ? `<div class="msg">${eventMain(ev)}${details.length ? `<ul>${details.map(d => `<li>${d}</li>`).join("")}</ul>` : ""}</div>` : ""}
+    <dl>
+      <dt>${t("f_branch")}</dt><dd>${info.branch ? `<code>${esc(info.branch)}</code>` : "—"}${info.branches > 1 ? ` <span style="color:var(--muted)">${t("others", { n: info.branches - 1 })}</span>` : ""}</dd>
+      <dt>${t("f_last_commit")}</dt><dd title="${esc(full(h.date))}">${ago(h.date)}</dd>
+      <dt>${t("f_last_change")}</dt><dd title="${esc(full(r.last_change))}">${ago(r.last_change)}</dd>
+      <dt>${t("f_checked")}</dt><dd title="${esc(full(r.last_check))}">${ago(r.last_check)}</dd>
+      <dt>${t("f_tags")}</dt><dd>${info.tags ? `${info.tags}${info.latest_tag ? ` · ${t("latest_tag")} <code>${esc(info.latest_tag)}</code>` : ""}` : t("none_m")}</dd>
+      <dt>${t("f_archives")}</dt><dd>${archivesHtml}</dd>
+    </dl>
+    <div class="actions">
+      <button class="btn sm" data-act="check" ${busy ? "disabled" : ""}>${icon(busy ? "loader" : "refresh", busy ? "spin" : "")}${t("check_now")}</button>
+      ${r.state === "blocked" && !busy ? `<button class="btn sm alert" data-act="accept">${icon("shield")}${t("accept")}</button>` : ""}
+      <button class="btn sm ghost" data-act="history" aria-expanded="${openHistory.has(r.name)}">${icon("clock")}${t("history")}</button>
+      <span class="grow"></span>
+      <div class="menu-wrap">
+        <button class="btn sm ghost icon" data-act="menu" title="${esc(tr("more"))}" aria-label="${esc(tr("more"))}" aria-expanded="${openMenu === r.name}">${icon("dots")}</button>
+        ${openMenu === r.name ? `<div class="menu" role="menu">
+          ${latest ? `<button data-act="download" role="menuitem">${icon("download")}${t("download", { s: size(latest.size) })}</button>` : ""}
+          <button data-act="${r.paused ? "resume" : "pause"}" role="menuitem">${icon(r.paused ? "play" : "pause")}${t(r.paused ? "resume" : "pause")}</button>
+          <button data-act="remove" class="danger" role="menuitem">${icon("trash")}${t("remove")}</button>
+        </div>` : ""}
+      </div>
+    </div>
+    ${hist}
+  </article>`;
+}
+
+/* ------------------------------------------------------------------ card actions */
+$("#list").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const name = btn.closest(".card").dataset.name;
+  const r = data.repos.find(x => x.name === name);
+  const act = btn.dataset.act;
+  if (act === "menu") { openMenu = openMenu === name ? null : name; render(); e.stopPropagation(); return; }
+  openMenu = null;
+  try {
+    if (act === "check") { await api("POST", `api/repos/${encodeURIComponent(name)}/check`); toast(tr("t_queued", { name })); }
+    else if (act === "history") { openHistory.has(name) ? openHistory.delete(name) : openHistory.add(name); render(); return; }
+    else if (act === "accept") { openAccept(r); return; }
+    else if (act === "remove") { openRemove(r); render(); return; }
+    else if (act === "download") { const a = r.archives[0]; location.href = `api/repos/${encodeURIComponent(name)}/archives/${encodeURIComponent(a.file)}`; render(); return; }
+    else if (act === "pause" || act === "resume") {
+      await api("PATCH", `api/repos/${encodeURIComponent(name)}`, { paused: act === "pause" });
+      toast(tr(act === "pause" ? "t_paused" : "t_resumed", { name }));
+    }
+  } catch (err) { toast(tr("t_error", { e: errText(err) }), true); }
+  load(true);
+});
+document.addEventListener("click", e => { if (openMenu && !e.target.closest(".menu-wrap")) { openMenu = null; render(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && openMenu) { openMenu = null; render(); } });
+$("#chips").addEventListener("click", e => { const b = e.target.closest(".chip"); if (b) { filter = b.dataset.f; render(); } });
+$("#q").addEventListener("input", render);
+
+$("#btn-run").addEventListener("click", async () => {
+  try { await api("POST", "api/run"); toast(tr("t_run")); } catch (err) { toast(tr("t_error", { e: errText(err) }), true); }
+  load(true);
+});
+
+/* ------------------------------------------------------------------ dialogs */
+const dlgHead = title => `<div class="dlg-head"><h2>${title}</h2><button class="btn ghost icon" value="cancel" formmethod="dialog" aria-label="${esc(tr("close"))}">${icon("x")}</button></div>`;
+
+// ---- Add
+$("#btn-add").addEventListener("click", () => {
+  const d = $("#dlg-add");
+  d.innerHTML = `<form method="dialog" id="f-add">${dlgHead(t("add_title"))}
+    <div class="dlg-body">
+      <p class="hint">${t("add_hint")}</p>
+      <div class="field"><label for="a-url">${t("add_url")}</label>
+        <div class="row"><input type="text" id="a-url" placeholder="https://github.com/…" autocomplete="off" required>
+        <button class="btn" type="button" id="a-detect">${t("detect")}</button></div></div>
+      <p class="note" id="a-note" hidden></p>
+      <div id="a-fields" hidden style="display:grid;gap:14px">
+        <div class="field"><label for="a-name">${t("add_name")}</label><input type="text" id="a-name" autocomplete="off"><small>${t("add_name_hint")}</small></div>
+        <div class="field"><label for="a-src">${t("add_source")}</label><input type="text" id="a-src" autocomplete="off"></div>
+        <div class="field"><label for="a-fork">${t("add_fork")}</label><input type="text" id="a-fork" autocomplete="off" placeholder="owner/repo"><small>${t("add_fork_hint")}</small></div>
+      </div>
+    </div>
+    <div class="dlg-foot"><button class="btn" value="cancel" formmethod="dialog">${t("cancel")}</button>
+      <button class="btn primary" type="submit" id="a-submit" disabled>${icon("plus")}${t("add_confirm")}</button></div></form>`;
+  const note = d.querySelector("#a-note"), fields = d.querySelector("#a-fields"), submit = d.querySelector("#a-submit");
+  fields.hidden = true; fields.style.display = "none";
+  const showNote = (html, cls = "") => { note.hidden = false; note.className = "note " + cls; note.innerHTML = html; };
+  async function detect() {
+    const url = d.querySelector("#a-url").value.trim();
+    if (!url) return;
+    const btn = d.querySelector("#a-detect");
+    btn.disabled = true; btn.innerHTML = icon("loader", "spin");
+    try {
+      const r = await api("POST", "api/resolve", { url });
+      d.querySelector("#a-name").value = r.name;
+      d.querySelector("#a-src").value = r.url;
+      d.querySelector("#a-fork").value = r.fork || "";
+      showNote(r.kind === "fork" ? t("detected_fork", { up: r.upstream }) : r.kind === "repo" ? t("detected_repo") : t("detected_other"), "ok");
+      fields.hidden = false; fields.style.display = "grid"; submit.disabled = false;
+      d.querySelector("#a-name").focus();
+    } catch (err) {
+      showNote(esc(errText(err)), "bad");
+      if (err.code === "network") { // GitHub unreachable: allow manual entry
+        d.querySelector("#a-src").value = url; fields.hidden = false; fields.style.display = "grid"; submit.disabled = false;
+      }
+    } finally { btn.disabled = false; btn.textContent = tr("detect"); }
+  }
+  d.querySelector("#a-detect").addEventListener("click", detect);
+  d.querySelector("#a-url").addEventListener("keydown", e => { if (e.key === "Enter" && fields.hidden) { e.preventDefault(); detect(); } });
+  d.querySelector("#a-url").addEventListener("paste", () => setTimeout(detect, 0));
+  d.querySelector("#f-add").addEventListener("submit", async e => {
+    if (e.submitter && e.submitter.value === "cancel") return;
+    e.preventDefault();
+    if (fields.hidden) return detect();
+    submit.disabled = true;
+    try {
+      const name = d.querySelector("#a-name").value.trim();
+      await api("POST", "api/repos", { name, url: d.querySelector("#a-src").value.trim(), fork: d.querySelector("#a-fork").value.trim() });
+      d.close(); toast(tr("t_added", { name })); load(true);
+    } catch (err) { showNote(esc(errText(err)), "bad"); submit.disabled = false; }
+  });
+  d.showModal();
+  d.querySelector("#a-url").focus();
+});
+
+// ---- Settings
+function secretField(key, id, label, placeholder, hint) {
+  const st = data.secrets[key];
+  const state = st.set
+    ? `<span class="sec-state yes" data-status="${key}">${t(st.source === "env" ? "set_env" : "configured")}${st.hint ? ` <code>${esc(st.hint)}</code>` : ""}</span>`
+    : `<span class="sec-state no" data-status="${key}">${t("not_configured")}</span>`;
+  const clear = st.set && st.source === "ui" ? `<button class="btn sm ghost" type="button" data-clear="${key}">${icon("trash")}${t("clear")}</button>` : "";
+  return `<div class="field"><div class="lbl-row"><label for="${id}">${label}</label>${state}${clear}</div>
+    <input type="password" id="${id}" placeholder="${esc(st.set ? tr("keep_value") : placeholder)}" autocomplete="new-password" spellcheck="false">
+    <small>${hint}</small></div>`;
+}
+$("#btn-settings").addEventListener("click", () => {
+  const s = data.settings, d = $("#dlg-settings");
+  const intervals = data.options.intervals.map(n =>
+    `<option value="${n}" ${n === s.interval_hours ? "selected" : ""}>${n === 1 ? t("every_1h") : n === 24 ? t("every_24h") : t("every_h", { n })}</option>`).join("");
+  d.innerHTML = `<form method="dialog" id="f-set">${dlgHead(t("set_title"))}
+    <div class="dlg-body">
+      <div class="grid2">
+        <div class="field"><label for="s-lang">${t("set_lang")}</label>
+          <select id="s-lang"><option value="fr" ${s.language === "fr" ? "selected" : ""}>Français</option><option value="en" ${s.language === "en" ? "selected" : ""}>English</option></select></div>
+        <div class="field"><label for="s-int">${t("set_interval")}</label><select id="s-int">${intervals}</select></div>
+        <div class="field"><label for="s-keep">${t("set_keep")}</label><input type="number" id="s-keep" min="1" max="100" value="${s.keep_archives}"></div>
+        <div class="field"><label for="s-shrink">${t("set_shrink")}</label><input type="number" id="s-shrink" min="10" max="95" value="${s.shrink_threshold}"><small>${t("set_shrink_hint")}</small></div>
+      </div>
+      <label class="check"><input type="checkbox" id="s-nochange" ${s.notify_no_change ? "checked" : ""}>${t("set_nochange")}</label>
+      <div class="section-title">${t("set_secrets")}</div>
+      ${secretField("discord", "s-hook", t("sec_discord"), "https://discord.com/api/webhooks/…", t("sec_discord_hint"))}
+      ${secretField("github", "s-token", t("sec_github"), "github_pat_…", t("sec_github_hint"))}
+      <div class="field"><label for="s-url">${t("sec_url")}</label>
+        <input type="text" id="s-url" value="${esc(data.secrets.public_url || location.origin)}" autocomplete="off"><small>${t("sec_url_hint")}</small></div>
+      <p class="note" id="s-note" hidden></p>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" id="s-test" style="margin-right:auto">${icon("send")}${t("test_discord")}</button>
+      <button class="btn" value="cancel" formmethod="dialog">${t("cancel")}</button>
+      <button class="btn primary" type="submit">${icon("check")}${t("save")}</button></div></form>`;
+  const note = d.querySelector("#s-note");
+  const cleared = new Set();
+  d.querySelectorAll("[data-clear]").forEach(btn => btn.addEventListener("click", () => {
+    const key = btn.dataset.clear;
+    cleared.add(key);
+    const st = d.querySelector(`[data-status="${key}"]`);
+    st.className = "sec-state no"; st.textContent = tr("will_clear");
+    btn.remove();
+  }));
+  d.querySelector("#s-test").addEventListener("click", async e => {
+    const b = e.currentTarget; b.disabled = true;
+    const typed = d.querySelector("#s-hook").value.trim();
+    try { await api("POST", "api/test-notification", typed ? { discord_webhook: typed } : {}); toast(tr("t_test_ok")); }
+    catch (err) { toast(tr("t_error", { e: errText(err) }), true); }
+    finally { b.disabled = false; }
+  });
+  d.querySelector("#f-set").addEventListener("submit", async e => {
+    if (e.submitter && e.submitter.value === "cancel") return;
+    e.preventDefault();
+    try {
+      const sec = {};
+      const hook = d.querySelector("#s-hook").value.trim(), token = d.querySelector("#s-token").value.trim();
+      if (hook) sec.discord_webhook = hook; else if (cleared.has("discord")) sec.discord_webhook = "";
+      if (token) sec.github_token = token; else if (cleared.has("github")) sec.github_token = "";
+      const url = d.querySelector("#s-url").value.trim();
+      if (url !== (data.secrets.public_url || "")) sec.public_url = url;
+      if (Object.keys(sec).length) await api("PUT", "api/secrets", sec);
+      await api("PUT", "api/settings", {
+        language: d.querySelector("#s-lang").value,
+        interval_hours: +d.querySelector("#s-int").value,
+        keep_archives: +d.querySelector("#s-keep").value,
+        shrink_threshold: +d.querySelector("#s-shrink").value,
+        notify_no_change: d.querySelector("#s-nochange").checked,
+      });
+      d.close(); await load(true); toast(tr("t_saved"));
+    } catch (err) { note.hidden = false; note.className = "note bad"; note.textContent = errText(err); }
+  });
+  d.showModal();
+});
+
+// ---- Accept
+function openAccept(r) {
+  const d = $("#dlg-accept"), b = r.blocked || {}, gh = r.upstream_full;
+  const reasons = (b.reasons || []).map(x => {
+    const link = gh && x.old && x.new ? ` — <a href="https://github.com/${esc(gh)}/compare/${esc(x.old)}...${esc(x.new)}" target="_blank" rel="noopener">${t("compare")}</a>` : "";
+    return `<li>${reasonText(x)}${link}</li>`;
+  }).join("");
+  const legacy = b.legacy && r.event && r.event.code === "legacy" ? `<p class="hint">${t("acc_legacy")}</p><p class="note">${eventMain(r.event)}</p>` : "";
+  d.innerHTML = `<form method="dialog" id="f-acc">${dlgHead(t("acc_title", { name: r.name }))}
+    <div class="dlg-body">
+      ${reasons ? `<p class="hint">${t("acc_intro")}</p><ul class="reasons">${reasons}</ul>` : legacy}
+      <p class="note">${t("acc_after")}</p>
+    </div>
+    <div class="dlg-foot"><button class="btn" value="cancel" formmethod="dialog">${t("cancel")}</button>
+      <button class="btn danger" type="submit">${icon("shield")}${t("acc_confirm")}</button></div></form>`;
+  d.querySelector("#f-acc").addEventListener("submit", async e => {
+    if (e.submitter && e.submitter.value === "cancel") return;
+    e.preventDefault();
+    try { await api("POST", `api/repos/${encodeURIComponent(r.name)}/accept`); d.close(); toast(tr("t_accept", { name: r.name })); }
+    catch (err) { d.close(); toast(tr("t_error", { e: errText(err) }), true); }
+    load(true);
+  });
+  d.showModal();
+}
+
+// ---- Remove
+function openRemove(r) {
+  const d = $("#dlg-remove");
+  d.innerHTML = `<form method="dialog" id="f-rm">${dlgHead(t("rm_title", { name: r.name }))}
+    <div class="dlg-body"><p class="hint">${t("rm_text")}</p>
+      <label class="check"><input type="checkbox" id="rm-purge">${t("rm_purge")}</label></div>
+    <div class="dlg-foot"><button class="btn" value="cancel" formmethod="dialog">${t("cancel")}</button>
+      <button class="btn danger" type="submit">${icon("trash")}${t("rm_confirm")}</button></div></form>`;
+  d.querySelector("#f-rm").addEventListener("submit", async e => {
+    if (e.submitter && e.submitter.value === "cancel") return;
+    e.preventDefault();
+    try {
+      await api("DELETE", `api/repos/${encodeURIComponent(r.name)}?purge=${d.querySelector("#rm-purge").checked ? 1 : 0}`);
+      d.close(); openHistory.delete(r.name); toast(tr("t_removed", { name: r.name }));
+    } catch (err) { d.close(); toast(tr("t_error", { e: errText(err) }), true); }
+    load(true);
+  });
+  d.showModal();
+}
+
+/* ------------------------------------------------------------------ start */
+applyLang();
+load(true);
+</script>
+</body>
+</html>
