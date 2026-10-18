@@ -1,8 +1,11 @@
-# ForkWatch
+# <img src="docs/forkwatch-logo.png" alt="" width="36" align="top"> ForkWatch
 
 ForkWatch keeps a safe copy of the Git repositories you depend on, such as Home Assistant integrations, in case their authors delete them or break them.
 
 ![ForkWatch dashboard](docs/dashboard.png)
+
+
+## ✨ Features
 
 On each check, it:
 
@@ -25,7 +28,8 @@ Everything is managed from a web dashboard:
 - change settings, language and theme;
 - set the Discord webhook and the GitHub token.
 
-## Layout
+
+## 🗂️ Layout
 
 The project lives in the `forkwatch/` subfolder of the `Docker_stacks` repository:
 
@@ -50,7 +54,8 @@ Everything else lives in a single folder on the Docker host, `/<YOUR>/<PATH>/for
 | `archives/` | `.bundle` archives |
 | `forkwatch.log` | Activity log |
 
-## Deployment with Dockhand
+
+## 🚀 Deployment with Dockhand
 
 1. Create the data folder on the Docker host:
    ```sh
@@ -65,7 +70,8 @@ ForkWatch checks all repositories at the frequency set in **Settings** (every 6 
 
 After a redeploy, ForkWatch only checks again if the last run is older than the interval.
 
-## Upgrading from v1
+
+## 🪜 Upgrading from v1
 
 The v2 reuses the v1 data folder as it is: Git mirrors, archives and the state of each repository are kept.
 
@@ -81,10 +87,9 @@ The v1 `forkwatch.env` is no longer needed. Paste the webhook and the token into
 
 Messages from v1 are kept in each repository's history, in their original language.
 
-## Configuration
+## ⚙️ Configuration
 
-### Settings (dashboard)
-
+### 1️⃣ <ins>Settings (dashboard)</ins>
 | Setting | Default | Purpose |
 |---|---|---|
 | Language | French | Language of the dashboard and of the Discord notifications |
@@ -95,7 +100,7 @@ Messages from v1 are kept in each repository's history, in their original langua
 
 The dark and light theme switch is a per-browser preference. It is not a server setting.
 
-### Notifications and GitHub (dashboard)
+### 2️⃣ <ins>Notifications and GitHub (dashboard)</ins>
 
 These fields are also in **Settings**:
 
@@ -116,17 +121,7 @@ Changes apply immediately, without a restart.
 
 **Optional env file.** The same values can also come from an `env_file` with `DISCORD_WEBHOOK`, `GITHUB_TOKEN` and `FORKWATCH_URL`. Values set in the dashboard take precedence, and the env file is only used as a fallback.
 
-## Adding a repository
-
-Click **Add** and paste a URL:
-
-- **Your GitHub fork** (`https://github.com/<YOUR_USERNAME>/<YOUR_FORK>`): ForkWatch asks GitHub for the original repository and watches it. Your fork is filled in automatically and synced after each healthy update.
-- **A GitHub repository you did not fork:** ForkWatch watches it directly, with `Fork: N/A`.
-- **Any other Git URL** (GitLab, Gitea…): ForkWatch watches it directly, without automatic detection.
-
-You can adjust the name, source and fork before confirming. The first check starts right away.
-
-## GitHub token
+### 3️⃣ <ins>GitHub token</ins>
 
 The token is **optional**. ForkWatch downloads upstream code anonymously. It uses the token for two things only:
 
@@ -154,7 +149,18 @@ To create the token:
 
 The permissions are the same for public and private forks. A fork of a public repository is always public on GitHub anyway. A **private upstream** is not supported, because ForkWatch fetches upstreams without credentials and would report the clone as failed.
 
-## What happens when an upstream changes
+## 🗃️ Adding a repository
+
+Click **Add** and paste a URL:
+
+- **Your GitHub fork** (`https://github.com/<YOUR_USERNAME>/<YOUR_FORK>`): ForkWatch asks GitHub for the original repository and watches it. Your fork is filled in automatically and synced after each healthy update.
+- **A GitHub repository you did not fork:** ForkWatch watches it directly, with `Fork: N/A`.
+- **Any other Git URL** (GitLab, Gitea…): ForkWatch watches it directly, without automatic detection.
+
+You can adjust the name, source and fork before confirming. The first check starts right away.
+
+
+## ℹ️ What happens when an upstream changes
 
 | Situation | ForkWatch does | Notification |
 |---|---|---|
@@ -170,7 +176,7 @@ To review a blocked update, click **Accept…** on the card:
 - the dialog lists the reasons for the block, with a link to the GitHub comparison;
 - if you accept, the current state is archived and also kept in the repository under `refs/forkwatch/before-accept/<date>/`, then the upstream version is applied.
 
-## Off-site backup
+## 💾 Off-site backup
 
 The archives are in `/<YOUR>/<PATH>/forkwatch/data/archives/<name>/*.bundle`.
 
@@ -186,7 +192,7 @@ git clone name-YYYYMMDD-HHMMSS.bundle <MY_REPO>
 
 Removing a repository from the dashboard always keeps its archives. You can choose to also delete the local Git copy.
 
-## Command line
+## 🖥️ Command line
 
 The dashboard covers everything, but the same actions are available from the Docker host:
 
@@ -198,7 +204,7 @@ docker exec forkwatch python3 /app/forkwatch.py test-notif     # test the Discor
 docker logs -f forkwatch                                       # follow the activity
 ```
 
-## API
+## 🌐 API
 
 The dashboard is a thin client on a small JSON API:
 
@@ -216,6 +222,23 @@ The dashboard is a thin client on a small JSON API:
 | GET | `/api/repos/NAME/archives/FILE` | Download an archive |
 | POST | `/api/test-notification` | Send a Discord test message |
 
-## Security
+---
 
-The dashboard has **no authentication**, and it can accept updates, remove repositories and replace the webhook or the token. It never displays the secrets, but anyone who can open it can overwrite them. Keep it on your local network, or reach it through a VPN, and never expose it publicly.
+## 🚨 Security
+
+> [!IMPORTANT]
+> The dashboard has **no authentication**, and it can accept updates, remove repositories and replace the webhook or the token. It never displays the secrets, but anyone who can open it can overwrite them. Keep it on your local network, or reach it through a VPN, and never expose it publicly.
+
+---
+
+## 🤝 Contributing
+
+If you'd like to improve this integration or report a bug:
+1.  Open an **Issue** to report a problem.
+2.  Submit a **Pull Request** to propose changes.
+
+---
+
+## 📄 License
+
+This project is released under the MIT License. See the [LICENSE](LICENSE) file for details.
