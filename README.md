@@ -1,6 +1,9 @@
 # <img src="docs/forkwatch-logo.png" alt="" width="36" align="top"> ForkWatch
 
 ForkWatch keeps a safe copy of the Git repositories you depend on, such as Home Assistant integrations, in case their authors delete them or break them.
+The targeted repository is:
+- Locally archived
+- 
 
 ![ForkWatch dashboard](docs/dashboard.png)
 
