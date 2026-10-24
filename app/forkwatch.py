@@ -12,6 +12,7 @@ Standard library only. Usage:
     forkwatch.py test-notif      send a Discord test message
 """
 
+import fnmatch
 import json
 import os
 import queue
@@ -44,6 +45,7 @@ LOG_FILE = DATA / "forkwatch.log"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 STATES = ("ok", "blocked", "missing", "error", "pending")
 INTERVALS = (1, 2, 3, 6, 12, 24)
+DEFAULT_IGNORED = ["release-please--*", "dependabot/*", "renovate/*"]
 HISTORY_MAX = 60
 USER_AGENT = f"ForkWatch/{VERSION}"
 GIT_ENV = dict(os.environ, GIT_TERMINAL_PROMPT="0")
@@ -140,6 +142,7 @@ def default_settings():
         "keep_archives": env_int("KEEP_ARCHIVES", 5, 1, 100),
         "shrink_threshold": env_int("SHRINK_THRESHOLD", 50, 10, 95),
         "min_files_for_check": env_int("MIN_FILES_FOR_CHECK", 10, 1, 100000),
+        "ignore_branches": list(DEFAULT_IGNORED),
         "notify_no_change": env("NOTIFY_NO_CHANGE") == "1",
     }
 
@@ -199,6 +202,18 @@ def is_ancestor(repo, old, new):
 def count_files(repo, rev):
     out = git("ls-tree", "-r", "--name-only", rev, repo=repo)
     return len([l for l in out.splitlines() if l])
+
+
+def ignored(ref, patterns):
+    """True for a branch matching one of the ignore patterns (bot branches, rewritten all the time)."""
+    if not ref.startswith("refs/heads/"):
+        return False
+    branch = ref[len("refs/heads/"):]
+    return any(fnmatch.fnmatchcase(branch, p) for p in patterns)
+
+
+def without_ignored(refs, patterns):
+    return None if refs is None else {r: v for r, v in refs.items() if not ignored(r, patterns)}
 
 
 def read_seen(name):
@@ -359,6 +374,9 @@ TXT = {
         "new_tag": "nouveau tag `{ref}`",
         "moved_tag": "tag `{ref}` déplacé upstream (ancienne version conservée ici)",
         "deleted_tag": "tag `{ref}` supprimé upstream (conservé ici)",
+        "rewritten_branch": "branche `{ref}` réécrite upstream (force-push accepté, branche secondaire ; ancien commit `{old}` conservé)",
+        "unblocked": "✅ {name} : débloqué",
+        "unblocked_d": "Les nouvelles règles ou l'upstream ont levé le blocage.",
         "archive": "État précédent archivé : `{file}`",
         "fork_ok": "Fork GitHub {repo} : synchronisé ✔",
         "fork_diverged": "Fork GitHub {repo} : NON synchronisé (historique divergent, à faire à la main)",
@@ -391,6 +409,9 @@ TXT = {
         "new_tag": "new tag `{ref}`",
         "moved_tag": "tag `{ref}` moved upstream (old version kept here)",
         "deleted_tag": "tag `{ref}` deleted upstream (kept here)",
+        "rewritten_branch": "branch `{ref}` rewritten upstream (force-push accepted, secondary branch; old commit `{old}` kept)",
+        "unblocked": "✅ {name}: unblocked",
+        "unblocked_d": "The new rules or the upstream lifted the block.",
         "archive": "Previous state archived: `{file}`",
         "fork_ok": "GitHub fork {repo}: synced ✔",
         "fork_diverged": "GitHub fork {repo}: NOT synced (diverged history, sync it manually)",
@@ -423,7 +444,7 @@ def render_discord(name, url, ev, lang):
                 lines.append(T["more"].format(n=b["n"] - len(b.get("commits", []))))
         if p.get("infos"):
             lines.append("")
-            lines += ["• " + T[i["kind"]].format(ref=i["ref"]) for i in p["infos"]]
+            lines += ["• " + T[i["kind"]].format(ref=i["ref"], old=i.get("old", "")) for i in p["infos"]]
         if p.get("archive"):
             lines += ["", T["archive"].format(file=p["archive"])]
         fork_line(p.get("fork"))
@@ -441,6 +462,9 @@ def render_discord(name, url, ev, lang):
         lines.append(T["missing_d"].format(url=url))
         if p.get("error"):
             lines.append(f"```{p['error'][:400]}```")
+    elif code == "unblocked":
+        title = T["unblocked"].format(name=name)
+        lines.append(T["unblocked_d"])
     elif code == "back":
         title = T["back"].format(name=name)
         lines.append(url)
@@ -687,8 +711,11 @@ class Engine:
             self.refresh_info(name)
             return True
 
-        seen = read_seen(name)
-        if seen == remote:
+        patterns = s.get("ignore_branches") or []
+        remote = without_ignored(remote, patterns)
+        seen = without_ignored(read_seen(name), patterns)
+        # a blocked repository is re-analysed on every check, so new rules (or a fixed upstream) can release it
+        if seen == remote and r["state"] != "blocked":
             log(f"[{name}] no change")
             if r["state"] in ("error", "pending"):
                 self.update(name, state="ok")
@@ -711,11 +738,15 @@ class Engine:
             return False
 
         local = refs_of(repo, "refs/heads", "refs/tags")
-        staged = {"refs/" + k[len("refs/staging/"):]: v for k, v in refs_of(repo, "refs/staging").items()}
-        previous = seen if seen is not None else local
+        staged = without_ignored({"refs/" + k[len("refs/staging/"):]: v
+                                  for k, v in refs_of(repo, "refs/staging").items()}, patterns)
+        previous = seen if seen is not None else without_ignored(local, patterns)
+        main = default or git("symbolic-ref", "--short", "HEAD", repo=repo, check=False).strip()
 
         # 3. Analysis: real update or trap?
-        reasons, branches, infos, heads_changed = [], [], [], False
+        # The main branch is strict (force-push or emptied = blocked). Other branches are tolerant:
+        # a rewritten history is applied, and the old commit is kept under refs/forkwatch/rewritten/.
+        reasons, branches, infos, rewritten, heads_changed = [], [], [], [], False
         for ref, new in sorted(staged.items()):
             old = local.get(ref)
             if ref.startswith("refs/heads/"):
@@ -727,10 +758,16 @@ class Engine:
                     heads_changed = True
                     continue
                 if not is_ancestor(repo, old, new):
-                    reasons.append({"type": "force", "branch": b, "old": old, "new": new})
+                    if b == main:
+                        reasons.append({"type": "force", "branch": b, "old": old, "new": new})
+                    else:
+                        rewritten.append({"branch": b, "old": old, "new": new})
+                        infos.append({"kind": "rewritten_branch", "ref": b, "old": old[:7]})
+                        heads_changed = True
                     continue
                 before, after = count_files(repo, old), count_files(repo, new)
-                if before >= s["min_files_for_check"] and after * 100 < before * (100 - s["shrink_threshold"]):
+                if b == main and before >= s["min_files_for_check"] and \
+                        after * 100 < before * (100 - s["shrink_threshold"]):
                     reasons.append({"type": "shrink", "branch": b, "old": old, "new": new,
                                     "before": before, "after": after,
                                     "pct": round((before - after) * 100 / before)})
@@ -749,14 +786,24 @@ class Engine:
                 infos.append({"kind": "deleted_tag", "ref": ref[len("refs/tags/"):]})
 
         if reasons:
-            write_seen(name, remote)       # do not alert again until upstream moves again
-            self.update(name, blocked={"reasons": reasons, "at": now()})
-            self.record(name, "blocked", "alert", state="blocked", reasons=reasons)
+            write_seen(name, remote)
+            key = lambda lst: sorted((x["type"], x["branch"], x["new"]) for x in lst)
+            already = r["state"] == "blocked" and r.get("blocked") and \
+                key(r["blocked"].get("reasons") or []) == key(reasons)
+            if already:
+                log(f"[{name}] still blocked")    # same block as before: no new alert
+            else:
+                self.update(name, blocked={"reasons": reasons, "at": now()})
+                self.record(name, "blocked", "alert", state="blocked", reasons=reasons)
             return True
 
         # 4. Healthy update: archive the current state, then apply
         ops = [f"update {ref} {new}\n" for ref, new in staged.items() if ref not in local]
         ops += [f"update refs/heads/{b['branch']} {b['new']} {b['old']}\n" for b in branches]
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        for b in rewritten:
+            ops.append(f"create refs/forkwatch/rewritten/{stamp}/{b['branch']} {b['old']}\n")
+            ops.append(f"update refs/heads/{b['branch']} {b['new']} {b['old']}\n")
         archive, fork = None, None
         if ops:
             archive = make_archive(name, repo, s["keep_archives"])
@@ -781,6 +828,8 @@ class Engine:
             self.record(name, "minor", "info", state="ok", infos=infos, archive=archive, fork=fork)
         else:
             self.update(name, state="ok")
+            if r["state"] == "blocked":
+                self.record(name, "unblocked", "ok", state="ok")
         self.refresh_info(name)
         return True
 
@@ -1045,6 +1094,16 @@ def make_handler(store, engine, runner):
                         new[key] = v
                 if "notify_no_change" in b:
                     new["notify_no_change"] = bool(b["notify_no_change"])
+                if "ignore_branches" in b:
+                    items = b["ignore_branches"]
+                    if isinstance(items, str):
+                        items = re.split(r"[,\s]+", items)
+                    if not isinstance(items, list):
+                        raise ApiError("invalid_setting", detail="ignore_branches")
+                    items = [str(x).strip() for x in items if str(x).strip()]
+                    if len(items) > 50 or any(len(x) > 100 for x in items):
+                        raise ApiError("invalid_setting", detail="ignore_branches")
+                    new["ignore_branches"] = list(dict.fromkeys(items))
                 with store.lock:
                     store.data["settings"].update(new)
                     store.save()

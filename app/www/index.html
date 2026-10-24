@@ -326,6 +326,9 @@ const I18N = {
     r_shrink: "{branch} : {before} → {after} fichiers (−{pct} %)",
     i_new_branch: "nouvelle branche {ref}", i_deleted_branch: "branche {ref} supprimée upstream (conservée ici)", i_new_tag: "nouveau tag {ref}",
     i_moved_tag: "tag {ref} déplacé upstream (ancienne version conservée ici)", i_deleted_tag: "tag {ref} supprimé upstream (conservé ici)",
+    i_rewritten_branch: "branche secondaire {ref} réécrite upstream : appliquée, ancien commit {old} conservé",
+    ev_unblocked: "Débloqué : les nouvelles règles ou l'upstream ont levé le blocage.",
+    set_ignore: "Branches ignorées", set_ignore_hint: "Branches de bots réécrites en permanence, ni sauvegardées ni notifiées. Séparées par des virgules, * autorisé.",
     b_commits: ["{branch} : {n} commit", "{branch} : {n} commits"], fork_ok: "Fork {repo} synchronisé.", fork_diverged: "Fork {repo} non synchronisé (historique divergent, à faire à la main).",
     fork_error: "Fork {repo} : erreur HTTP {code}.", h_empty: "Aucun événement.",
   },
@@ -384,6 +387,9 @@ const I18N = {
     r_shrink: "{branch}: {before} → {after} files (−{pct}%)",
     i_new_branch: "new branch {ref}", i_deleted_branch: "branch {ref} deleted upstream (kept here)", i_new_tag: "new tag {ref}",
     i_moved_tag: "tag {ref} moved upstream (old version kept here)", i_deleted_tag: "tag {ref} deleted upstream (kept here)",
+    i_rewritten_branch: "secondary branch {ref} rewritten upstream: applied, old commit {old} kept",
+    ev_unblocked: "Unblocked: the new rules or the upstream lifted the block.",
+    set_ignore: "Ignored branches", set_ignore_hint: "Bot branches rewritten all the time, neither saved nor notified. Comma-separated, * allowed.",
     b_commits: ["{branch}: {n} commit", "{branch}: {n} commits"], fork_ok: "Fork {repo} synced.", fork_diverged: "Fork {repo} not synced (diverged history, sync it manually).",
     fork_error: "Fork {repo}: HTTP error {code}.", h_empty: "No events.",
   },
@@ -528,6 +534,7 @@ function eventMain(ev) {
     case "blocked": return t("ev_blocked");
     case "missing": return t("ev_missing");
     case "back": return t("ev_back");
+    case "unblocked": return t("ev_unblocked");
     case "accepted": return t("ev_accepted", { backup: p.backup || "" });
     case "error": return t("ev_error", { stage: tr("stage_" + (p.stage || "internal")), detail: (p.detail || "").split("\n")[0].slice(0, 200) });
     case "unchanged": return t("ev_unchanged");
@@ -545,7 +552,7 @@ function eventDetails(ev) {
   const p = ev.params || {}, out = [];
   if (ev.code === "blocked") (p.reasons || []).forEach(r => out.push(reasonText(r)));
   if (ev.code === "updated") (p.branches || []).forEach(b => out.push(t("b_commits", b)));
-  if (ev.code === "updated" || ev.code === "minor") (p.infos || []).forEach(i => out.push(t("i_" + i.kind, { ref: i.ref })));
+  if (ev.code === "updated" || ev.code === "minor") (p.infos || []).forEach(i => out.push(t("i_" + i.kind, { ref: i.ref, old: i.old || "" })));
   if (p.fork) out.push(t("fork_" + p.fork.result, { repo: p.fork.repo, code: p.fork.code }));
   return out;
 }
@@ -773,6 +780,8 @@ $("#btn-settings").addEventListener("click", () => {
         <div class="field"><label for="s-keep">${t("set_keep")}</label><input type="number" id="s-keep" min="1" max="100" value="${s.keep_archives}"></div>
         <div class="field"><label for="s-shrink">${t("set_shrink")}</label><input type="number" id="s-shrink" min="10" max="95" value="${s.shrink_threshold}"><small>${t("set_shrink_hint")}</small></div>
       </div>
+      <div class="field"><label for="s-ignore">${t("set_ignore")}</label>
+        <input type="text" id="s-ignore" value="${esc((s.ignore_branches || []).join(", "))}" autocomplete="off" spellcheck="false"><small>${t("set_ignore_hint")}</small></div>
       <label class="check"><input type="checkbox" id="s-nochange" ${s.notify_no_change ? "checked" : ""}>${t("set_nochange")}</label>
       <div class="section-title">${t("set_secrets")}</div>
       ${secretField("discord", "s-hook", t("sec_discord"), "https://discord.com/api/webhooks/…", t("sec_discord_hint"))}
@@ -818,6 +827,7 @@ $("#btn-settings").addEventListener("click", () => {
         keep_archives: +d.querySelector("#s-keep").value,
         shrink_threshold: +d.querySelector("#s-shrink").value,
         notify_no_change: d.querySelector("#s-nochange").checked,
+        ignore_branches: d.querySelector("#s-ignore").value,
       });
       d.close(); await load(true); toast(tr("t_saved"));
     } catch (err) { note.hidden = false; note.className = "note bad"; note.textContent = errText(err); }
